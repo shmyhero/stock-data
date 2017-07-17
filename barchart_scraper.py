@@ -144,3 +144,68 @@ class barchart_options():
         except Exception as e:
             logging.error("ERROR: {}".format(e), exc_info=True)
         return data
+    
+class BarchartFutures():
+    # --------------------------------------------
+    def __init__(self, root="VI"):
+        self.root = root
+        self.useRaw = ""    # if need show raw, set it to 1
+        
+        # 'tradeTime' to get current data
+        # ''
+        self.fields_cols = ['symbol','lastPrice','priceChange','openPrice','highPrice','lowPrice','previousPrice','volume','tradeTime', "dailyLastPrice", "dailyPriceChange", "dailyOpenPrice", "dailyHighPrice", "dailyLowPrice", "dailyPreviousPrice", "dailyVolume", "dailyDate1dAgo"]
+        # https://core-api.barchart.com/v1/quotes/get?fields=symbol%2CcontractSymbol%2ClastPrice%2CpriceChange%2CopenPrice%2ChighPrice%2ClowPrice%2CpreviousPrice%2Cvolume%2CopenInterest%2CtradeTime%2CsymbolCode%2CsymbolType%2ChasOptions&list=futures.contractInRoot&root=VI&meta=field.shortName%2Cfield.type%2Cfield.description&hasOptions=true&page=1&limit=100&raw=1
+        self.base_api_url = r'https://core-api.barchart.com/v1/quotes/get?fields={FIELDS}&list=futures.contractInRoot&root='+ root + r'&meta=&hasOptions=true&raw={RAW}&page=1'
+
+    # --------------------------------------------
+    # get basic futures data source
+    # --------------------------------------------
+    def __create_base_url(self):
+        url = self.base_api_url.format(FIELDS="symbol", RAW="")
+        return url
+
+    # --------------------------------------------
+    # get futures source data
+    # --------------------------------------------
+    def __create_data_url(self):
+        fields = ",".join(self.fields_cols)
+        url = self.base_api_url.format(FIELDS=fields,RAW=self.useRaw)
+        return url
+
+    def _get_data_src(self):
+        url = self.__create_data_url()
+        logging.info(url)
+        with requests.session() as S:
+            res = S.get(url)
+        return res.text
+
+    # --------------------------------------------
+    # create basic options dfs
+    # --------------------------------------------
+    def _create_data_df(self):
+        src = ""
+        jsrc = {}
+        for i in range(5):
+            src = self._get_data_src()
+            if len(src) == 0:
+                continue
+            jsrc = json.loads(src)
+            # sometimes cannot get the correct data
+            if not('data' in jsrc.keys()):
+                continue
+            else:
+                terms = jsrc['data']
+                if len(terms) == 0 or not isinstance(terms, list):
+                    continue
+                else:
+                    break
+        terms = jsrc['data']
+        if self.useRaw == "1":
+            terms = [x['raw'] for x in terms]
+        raw_df = pd.DataFrame(terms)
+        # to convert N/A, NA to np.nan
+        mask = raw_df.isin(["N/A", "NA"])
+        raw_df = raw_df.where(~mask, other=np.nan)
+        raw_df = raw_df.convert_objects(convert_numeric=True)
+        DATA = raw_df.set_index('symbol')
+        return DATA
